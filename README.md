@@ -5,4 +5,4 @@ An end-to-end data platform that ingests, processes, and analyzes synthetic high
 
 
 # Dependencies 
-'''pip install fastapi uvicorn'''
+'pip install fastapi uvicorn'

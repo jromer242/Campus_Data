@@ -33,7 +33,7 @@ class StudentSuccessPredictor:
         # Connect to database
         conn = sqlite3.connect(self.db_path)
         
-        # Complex query to create rich features
+        
         query = """
         SELECT 
             s.student_id,
@@ -75,12 +75,12 @@ class StudentSuccessPredictor:
         
         print(f"✅ Loaded {len(df)} student records")
         
-        # Create target variable (student success)
-        # Define success as: GPA >= 3.0 AND completion rate >= 70%
+        # Target Variable: Student Success
+        # Criteria: GPA >= 3.0 AND completion rate >= 70%
         df['completion_rate'] = df['completed_courses'] / df['total_enrollments'] * 100
         df['is_successful'] = ((df['gpa'] >= 3.0) & (df['completion_rate'] >= 70)).astype(int)
         
-        # Engineer additional features
+        # additional features
         df['courses_per_semester'] = df['total_enrollments'] / (df['days_enrolled'] / 120 + 1)  # Approx 120 days per semester
         df['drop_rate'] = df['dropped_courses'] / df['total_enrollments'] * 100
         df['excellence_rate'] = df['excellent_grades'] / df['total_enrollments'] * 100
@@ -96,7 +96,7 @@ class StudentSuccessPredictor:
         """Train multiple ML models and compare performance"""
         print("🤖 Training ML models...")
         
-        # Prepare features
+        # Prep features
         feature_columns = [
             'gpa', 'year_level', 'total_enrollments', 'completed_courses', 
             'dropped_courses', 'current_enrollments', 'excellent_grades',

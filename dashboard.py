@@ -10,7 +10,7 @@ import time
 
 # Page config - make it look professional
 st.set_page_config(
-    page_title="Trinity College Analytics Dashboard",
+    page_title="College Analytics Dashboard",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -534,7 +534,7 @@ def show_footer():
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: gray;'>
-        🎓 Trinity College Analytics Dashboard | Built with Streamlit & FastAPI | Data Engineering Portfolio Project
+        🎓College Analytics Dashboard | Built with Streamlit & FastAPI | Data Engineering Portfolio Project
     </div>
     """, unsafe_allow_html=True)
 

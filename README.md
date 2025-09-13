@@ -8,6 +8,6 @@ An end-to-end data platform that ingests, processes, and analyzes synthetic high
 
 `pip install fastapi uvicorn`
 
+<img width="1891" height="904" alt="Screenshot 2025-09-13 at 12 30 49 AM" src="https://github.com/user-attachments/assets/edb9d1e3-0977-4e6c-9712-493fec63a8f7" />
 
-<img width="1901" height="956" alt="Screenshot 2025-09-13 at 12 20 52 AM" src="https://github.com/user-attachments/assets/c1a7d86d-4f91-41e5-8d16-624b53674d08" />
 

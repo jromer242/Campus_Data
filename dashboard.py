@@ -98,7 +98,7 @@ def create_gauge_chart(value, title, max_value=100):
 # Main Dashboard
 def main():
     # Header
-    st.markdown('<h1 class="main-header">🎓 Trinity College Analytics Dashboard</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">🎓College Analytics Dashboard</h1>', unsafe_allow_html=True)
     
     # API Health Check
     health_data, health_error = fetch_api_data("/health")

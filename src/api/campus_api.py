@@ -217,7 +217,7 @@ async def health_check(db: Session = Depends(get_db)):
 @app.get("/students", response_model=List[StudentResponse], tags=["Students"])
 async def get_students(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(10, ge=1, le=100, description="Maximum number of records"),
+    limit: int = Query(10, ge=1, le=1000, description="Maximum number of records"),
     major: Optional[str] = Query(None, description="Filter by major"),
     year_level: Optional[int] = Query(None, ge=1, le=4, description="Filter by year"),
     min_gpa: Optional[float] = Query(None, ge=0.0, le=4.0, description="Minimum GPA"),
@@ -237,6 +237,31 @@ async def get_students(
     # Apply pagination
     students = query.offset(skip).limit(limit).all()
     return students
+
+# Move it here
+@app.get("/students/at-risk", tags=["Students", "Analytics"])
+async def get_at_risk_students(
+    gpa_threshold: float = Query(2.5, ge=0.0, le=4.0, description="GPA threshold for at-risk students"),
+    db: Session = Depends(get_db)
+):
+    """Get students at risk based on GPA threshold"""
+    at_risk_query = db.query(Student).filter(Student.gpa < gpa_threshold)
+    at_risk_students = at_risk_query.all()
+    
+    return {
+        "threshold": gpa_threshold,
+        "count": len(at_risk_students),
+        "students": [
+            {
+                "student_id": student.student_id,
+                "name": f"{student.first_name} {student.last_name}",
+                "gpa": student.gpa,
+                "major": student.major,
+                "year_level": student.year_level
+            }
+            for student in at_risk_students
+        ]
+    }
 
 
 @app.get("/students/{student_id}", response_model=StudentResponse, tags=["Students"])
@@ -461,6 +486,135 @@ async def get_overview_stats(db: Session = Depends(get_db)):
     stats['students_by_major'] = {major: count for major, count in major_counts if major}
     
     return stats
+
+# ✅ ADD THESE NEW ENDPOINTS HERE:
+
+@app.get("/analytics/students", tags=["Analytics"])
+async def get_student_analytics(db: Session = Depends(get_db)):
+    """Get student analytics overview"""
+    from sqlalchemy import func
+    
+    total_students = db.query(Student).count()
+    active_students = db.query(Student).filter(Student.is_active == True).count()
+    avg_gpa = db.query(func.avg(Student.gpa)).scalar() or 0
+    
+    # Students by major
+    students_by_major = db.query(
+        Student.major, 
+        func.count(Student.student_id)
+    ).group_by(Student.major).all()
+    
+    # Students by year level
+    students_by_year = db.query(
+        Student.year_level,
+        func.count(Student.student_id)
+    ).group_by(Student.year_level).all()
+    
+    return {
+        "total_students": total_students,
+        "active_students": active_students,
+        "average_gpa": round(float(avg_gpa), 2),
+        "students_by_major": [
+            {"major": major if major else "Undeclared", "count": count} 
+            for major, count in students_by_major
+        ],
+        "students_by_year": [
+            {"year": year if year else 0, "count": count}
+            for year, count in students_by_year
+        ]
+    }
+
+
+@app.get("/analytics/courses", tags=["Analytics"])
+async def get_course_analytics(db: Session = Depends(get_db)):
+    """Get course analytics overview"""
+    from sqlalchemy import func
+    
+    # total_courses = db.query(Course).count()
+        # Get all courses with enrollment stats
+    courses = db.query(Course).all()
+    
+    courses_data = []
+    for course in courses:
+        # Get enrollment stats for this course
+        enrollments = db.query(Enrollment).filter(Enrollment.course_id == course.course_id).all()
+        
+        total_enrollments = len(enrollments)
+        completed = len([e for e in enrollments if e.status == 'Completed'])
+        dropped = len([e for e in enrollments if e.status == 'Dropped'])
+        
+        # Calculate completion rate
+        completion_rate = (completed / total_enrollments * 100) if total_enrollments > 0 else 0
+        
+        # Calculate average grade point (A=4.0, B=3.0, etc.)
+        grade_points = {
+            'A': 4.0, 'A-': 3.7,
+            'B+': 3.3, 'B': 3.0, 'B-': 2.7,
+            'C+': 2.3, 'C': 2.0, 'C-': 1.7,
+            'D': 1.0, 'F': 0.0
+        }
+        
+        grades = [e.grade for e in enrollments if e.grade and e.grade in grade_points]
+        avg_grade_point = sum(grade_points[g] for g in grades) / len(grades) if grades else None
+        
+        courses_data.append({
+            'course_id': course.course_id,
+            'course_name': course.course_name,
+            'department': course.department or 'Unknown',
+            'credits': course.credits,
+            'total_enrollments': total_enrollments,
+            'completed': completed,
+            'dropped': dropped,
+            'completion_rate': round(completion_rate, 1),
+            'average_grade_point': round(avg_grade_point, 2) if avg_grade_point else None
+        })
+    
+    # Summary stats
+    total_courses = len(courses)
+    avg_enrollment = sum(c['total_enrollments'] for c in courses_data) / total_courses if total_courses > 0 else 0
+    
+    # # Courses by department
+    # courses_by_dept = db.query(
+    #     Course.department,
+    #     func.count(Course.course_id)
+    # ).group_by(Course.department).all()
+
+    # Courses by department
+    dept_counts = {}
+    for course in courses:
+        dept = course.department or 'Unknown'
+        dept_counts[dept] = dept_counts.get(dept, 0) + 1
+    
+    # Courses by semester
+    courses_by_semester = db.query(
+        Course.semester,
+        func.count(Course.course_id)
+    ).group_by(Course.semester).all()
+    
+    # Average credits
+    avg_credits = db.query(func.avg(Course.credits)).scalar() or 0
+    
+    return {
+        "total_courses": total_courses,
+        "average_credits": round(float(avg_credits), 1),
+        "average_enrollment": round(avg_enrollment, 1),
+        # "courses_by_department": [
+        #     {"department": dept if dept else "Unknown", "count": count}
+        #     for dept, count in courses_by_dept
+        # ],
+        "courses_by_department": [
+            {"department": dept, "count": count}
+            for dept, count in dept_counts.items()
+        ],
+        "courses_by_semester": [
+            {"semester": sem if sem else "Unknown", "count": count}
+            for sem, count in courses_by_semester
+        ],
+        "courses": courses_data
+    }
+
+
+
 
 
 # ============================================================================

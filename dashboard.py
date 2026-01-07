@@ -206,8 +206,11 @@ def show_overview_tab(gpa_threshold):
         if student_analytics and 'students_by_major' in student_analytics:
             majors_data = student_analytics['students_by_major']
             fig = px.pie(
-                values=list(majors_data.values()),
-                names=list(majors_data.keys()),
+                # values=list(majors_data.values()),
+                labels=[item['major'] for item in student_analytics['students_by_major']],
+                values=[item['count'] for item in student_analytics['students_by_major']],
+                # names=list(majors_data.keys()),
+                names=[item['major'] for item in majors_data],
                 title="🎯 Student Distribution by Major"
             )
             fig.update_traces(textposition='inside', textinfo='percent+label')
@@ -228,18 +231,27 @@ def show_overview_tab(gpa_threshold):
                          annotation_text=f"At-Risk Threshold ({gpa_threshold})")
             st.plotly_chart(fig, use_container_width=True)
 
+
 def show_students_tab(gpa_threshold):
     """Student analytics and at-risk identification"""
     st.header("👥 Student Analytics")
     
     # At-Risk Students Alert
-    at_risk_data, error = fetch_api_data("/students/at-risk", {"gpa_threshold": gpa_threshold})
+    at_risk_response, error = fetch_api_data("/students/at-risk", {"gpa_threshold": gpa_threshold})
     
-    if at_risk_data:
-        if len(at_risk_data) > 0:
+    if error:
+        st.error(error)
+        return
+    
+    if at_risk_response:
+        # Extract the students list from the response
+        at_risk_data = at_risk_response.get('students', [])
+        at_risk_count = at_risk_response.get('count', 0)
+        
+        if at_risk_count > 0:
             st.markdown(f"""
             <div class="alert-box">
-                <h4>⚠️ {len(at_risk_data)} Students Need Attention</h4>
+                <h4>⚠️ {at_risk_count} Students Need Attention</h4>
                 Students with GPA below {gpa_threshold} require academic support
             </div>
             """, unsafe_allow_html=True)
@@ -261,8 +273,8 @@ def show_students_tab(gpa_threshold):
                         "GPA",
                         format="%.2f"
                     ),
-                    "active_enrollments": st.column_config.NumberColumn(
-                        "Active Courses"
+                    "year_level": st.column_config.NumberColumn(
+                        "Year"
                     )
                 }
             )
@@ -303,7 +315,7 @@ def show_students_tab(gpa_threshold):
                     st.json(student_data)
                     
                     # Get prediction for this student
-                    prediction_data, _ = fetch_api_data(f"/ml/predictions/student-success/{student_search}")
+                    prediction_data, _ = fetch_api_data(f"/predict/student/{student_search}")
                     if prediction_data:
                         st.subheader("🤖 AI Prediction")
                         
@@ -318,14 +330,10 @@ def show_students_tab(gpa_threshold):
                         **Risk Level:** <span style="color: {color}; font-weight: bold;">{risk_level}</span>
                         """, unsafe_allow_html=True)
                         
-                        if prediction_data['risk_factors']:
-                            st.write("**Risk Factors:**")
-                            for factor in prediction_data['risk_factors']:
-                                st.write(f"- {factor}")
-                        
-                        st.write("**Recommendations:**")
-                        for rec in prediction_data['recommendations']:
-                            st.write(f"- {rec}")
+                        if 'recommendations' in prediction_data:
+                            st.write("**Recommendations:**")
+                            for rec in prediction_data['recommendations']:
+                                st.write(f"- {rec}")
                 else:
                     st.error(error or "Student not found")
 
@@ -334,22 +342,40 @@ def show_courses_tab(department_filter):
     st.header("📚 Course Analytics")
     
     # Fetch course data
-    params = None if department_filter == "All Departments" else {"department": department_filter}
-    courses_data, error = fetch_api_data("/analytics/courses", params)
+    # params = None if department_filter == "All Departments" else {"department": department_filter}
+    # courses_data, error = fetch_api_data("/analytics/courses", params)
+
+    courses_analytics, error = fetch_api_data("/analytics/courses")
     
     if error:
         st.error(error)
         return
     
-    if not courses_data:
+    # if not courses_data:
+    #     st.warning("No course data available")
+    #     return
+    
+    # # Convert to DataFrame for easier handling
+    # courses_df = pd.DataFrame(courses_data)
+
+    if not courses_analytics or 'courses' not in courses_analytics:
         st.warning("No course data available")
         return
     
     # Convert to DataFrame for easier handling
-    courses_df = pd.DataFrame(courses_data)
+    courses_df = pd.DataFrame(courses_analytics['courses'])
+
+    # Apply department filter
+    if department_filter != "All Departments":
+        courses_df = courses_df[courses_df['department'] == department_filter]
     
-    # Course metrics
-    col1, col2, col3 = st.columns(3)
+    if courses_df.empty:
+        st.warning(f"No courses found for {department_filter}")
+        return
+    
+    # ----------- Course metrics
+    # col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         total_courses = len(courses_df)
@@ -360,8 +386,17 @@ def show_courses_tab(department_filter):
         st.metric("📋 Avg Completion Rate", f"{avg_completion:.1f}%")
     
     with col3:
-        avg_grade = courses_df['average_grade_point'].mean()
-        st.metric("🎯 Avg Grade Point", f"{avg_grade:.2f}" if not pd.isna(avg_grade) else "N/A")
+        # avg_grade = courses_df['average_grade_point'].mean()
+        # st.metric("🎯 Avg Grade Point", f"{avg_grade:.2f}" if not pd.isna(avg_grade) else "N/A")
+
+        # Filter out None values before calculating mean
+        valid_grades = courses_df['average_grade_point'].dropna()
+        avg_grade = valid_grades.mean() if not valid_grades.empty else 0
+        st.metric("🎯 Avg Grade Point", f"{avg_grade:.2f}")
+    
+    with col4:
+        total_enrollments = courses_df['total_enrollments'].sum()
+        st.metric("👥 Total Enrollments", total_enrollments)
     
     # Course performance visualizations
     col1, col2 = st.columns(2)
@@ -403,12 +438,12 @@ def show_courses_tab(department_filter):
     # Add filters for the table
     col1, col2 = st.columns(2)
     with col1:
-        sort_by = st.selectbox("Sort by", ["total_enrollments", "completion_rate", "average_grade_point"])
+        sort_by = st.selectbox("Sort by", ["total_enrollments", "completion_rate", "average_grade_point","course_name"])
     with col2:
         ascending = st.checkbox("Ascending order", False)
     
     # Sort and display
-    display_df = courses_df.sort_values(sort_by, ascending=ascending)
+    display_df = courses_df.sort_values(sort_by, ascending=ascending, na_position='last')
     
     st.dataframe(
         display_df,
@@ -422,7 +457,8 @@ def show_courses_tab(department_filter):
                 "Avg Grade Point",
                 format="%.2f"
             )
-        }
+        },
+        hide_index=True
     )
 
 def show_ai_insights_tab():
@@ -499,35 +535,49 @@ def show_ai_insights_tab():
     
     # Fetch some actual data for insights
     students_data, _ = fetch_api_data("/students", {"limit": 1000})
-    at_risk_data, _ = fetch_api_data("/students/at-risk")
+    at_risk_response, _ = fetch_api_data("/students/at-risk")
     
-    if students_data and at_risk_data:
+    if students_data and at_risk_response:
         insights = []
+        
+        # Extract students list from response
+        at_risk_data = at_risk_response.get('students', [])
         
         # Generate insights
         total_students = len([s for s in students_data if s['is_active']])
-        at_risk_count = len(at_risk_data)
+        at_risk_count = at_risk_response.get('count', 0)
         
         if at_risk_count > 0:
-            at_risk_pct = (at_risk_count / total_students) * 100
+            at_risk_pct = (at_risk_count / total_students) * 100 if total_students > 0 else 0
             insights.append(f"🚨 {at_risk_pct:.1f}% of students are at academic risk")
         
         # Major with most at-risk students
-        if at_risk_data:
+        if at_risk_data and len(at_risk_data) > 0:
             at_risk_df = pd.DataFrame(at_risk_data)
-            top_risk_major = at_risk_df['major'].value_counts().index[0]
-            risk_count = at_risk_df['major'].value_counts().iloc[0]
-            insights.append(f"📚 {top_risk_major} has the most at-risk students ({risk_count})")
+            if 'major' in at_risk_df.columns and not at_risk_df['major'].isna().all():
+                major_counts = at_risk_df['major'].value_counts()
+                if len(major_counts) > 0:
+                    top_risk_major = major_counts.index[0]
+                    risk_count = major_counts.iloc[0]
+                    insights.append(f"📚 {top_risk_major} has the most at-risk students ({risk_count})")
         
         # GPA insights
-        active_gpas = [s['gpa'] for s in students_data if s['is_active']]
-        if active_gpas:
-            median_gpa = np.median(active_gpas)
-            insights.append(f"📊 Median campus GPA is {median_gpa:.2f}")
+        if students_data:
+            active_gpas = [s['gpa'] for s in students_data if s.get('is_active') and s.get('gpa') is not None]
+            if active_gpas:
+                median_gpa = np.median(active_gpas)
+                insights.append(f"📊 Median campus GPA is {median_gpa:.2f}")
+                
+                avg_gpa = np.mean(active_gpas)
+                insights.append(f"📈 Average campus GPA is {avg_gpa:.2f}")
         
         # Display insights
-        for insight in insights:
-            st.info(insight)
+        if insights:
+            for insight in insights:
+                st.info(insight)
+        else:
+            st.info("📊 Gathering insights from campus data...")
+
 
 # Footer
 def show_footer():

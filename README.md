@@ -372,6 +372,3 @@ If you have any questions or run into issues:
 3. Open an [Issue](https://github.com/jromer242/Campus_Data/issues)
 4. Contact the maintainer
 
----
-
-**Made with ❤️ for educational data analytics**
